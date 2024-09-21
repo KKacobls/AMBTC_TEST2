@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+        <!-- Cookie Consent Modal -->
+<div id="cookieConsent" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; max-width: 600px; background-color: rgba(0, 0, 0, 0.8); color: white; text-align: center; padding: 30px; font-size: 16px; display: none; z-index: 10000; border-radius: 10px;">
+    本網站中使用 cookie，欲查詢有關本網站使用 cookie 方式之詳情，及若您不希望在電腦上使用 cookie 時應如何變更電腦的 cookie 設定，請參閱本網站「隱私權及網站使用條款」之 Cookie 聲明。您繼續使用本網站即表示您同意本公司得按本網站使用條款之 Cookie 聲明使用 cookie。
+    <br><br>
+    <a href="#" style="color: #00bfff; text-decoration: underline;">了解更多 ></a>
+    <br><br>
+    <button id="acceptCookies" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; cursor: pointer; border-radius: 5px;">接受</button>
+    <button id="declineCookies" style="padding: 10px 20px; background-color: #f44336; color: white; border: none; cursor: pointer; border-radius: 5px; margin-left: 10px;">不接受</button>
+</div>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AMBTC Image Compression</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            text-align: center;
+        }
+        .container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        .button-container {
+            margin: 20px 0;
+        }
+        .button-container button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        .button-container button:hover {
+            background-color: #45a049;
+        }
+        canvas {
+            border: 1px solid black;
+            margin: 10px 0;
+        }
+        .info {
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        input[type="file"] {
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .download-btn {
+            display: none;
+        }
+        .credit {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 14px;
+            background-color: #333;
+            color: white;
+            padding: 5px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>AMBTC Image Compression</h1>
+
+    <div class="container">
+        <input type="file" id="imageInput" accept="image/*">
+        
+        <div class="button-container">
+            <button id="downloadBtn" class="download-btn">下載壓縮後的圖片</button>
+        </div>
+
+        <div class="info" id="info"></div>
+        
+        <canvas id="originalCanvas"></canvas>
+        <canvas id="compressedCanvas"></canvas>
+    </div>
+
+    <div class="credit">KK製作</div>
+
+    <script>
+        document.getElementById('imageInput').addEventListener('change', handleImageUpload);
+
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+
+            img.onload = () => {
+                const originalCanvas = document.getElementById('originalCanvas');
+                const compressedCanvas = document.getElementById('compressedCanvas');
+                originalCanvas.width = img.width;
+                originalCanvas.height = img.height;
+                compressedCanvas.width = img.width;
+                compressedCanvas.height = img.height;
+
+                const originalCtx = originalCanvas.getContext('2d');
+                const compressedCtx = compressedCanvas.getContext('2d');
+                
+                originalCtx.drawImage(img, 0, 0);
+
+                const originalImageData = originalCtx.getImageData(0, 0, img.width, img.height);
+                const compressedImageData = compressedCtx.createImageData(img.width, img.height);
+
+                const blockSize = 4; // 設置區塊大小
+                compressAMBTC(originalImageData, compressedImageData, blockSize);
+
+                compressedCtx.putImageData(compressedImageData, 0, 0);
+
+                const originalSize = file.size;
+                document.getElementById('info').innerHTML = `<strong>原始圖像大小: ${formatFileSize(originalSize)}</strong>`;
+
+                // 啟用下載按鈕，並計算實際下載後的大小
+                const downloadBtn = document.getElementById('downloadBtn');
+                downloadBtn.style.display = 'inline-block';
+                downloadBtn.onclick = () => {
+                    const fileSizeAfterDownload = downloadCompressedImage(compressedCanvas);
+                    document.getElementById('info').innerHTML = `<strong>原始圖像大小: ${formatFileSize(originalSize)}</strong><br><strong>壓縮後圖像大小: ${formatFileSize(fileSizeAfterDownload)}</strong>`;
+                };
+            };
+
+            img.src = url;
+        }
+
+        function compressAMBTC(originalImageData, compressedImageData, blockSize) {
+            const { width, height } = originalImageData;
+            const originalData = originalImageData.data;
+            const compressedData = compressedImageData.data;
+
+            for (let y = 0; y < height; y += blockSize) {
+                for (let x = 0; x < width; x += blockSize) {
+                    const blockPixels = [];
+
+                    for (let i = 0; i < blockSize; i++) {
+                        for (let j = 0; j < blockSize; j++) {
+                            const pixelX = x + j;
+                            const pixelY = y + i;
+
+                            if (pixelX < width && pixelY < height) {
+                                const idx = (pixelY * width + pixelX) * 4;
+                                const r = originalData[idx];
+                                const g = originalData[idx + 1];
+                                const b = originalData[idx + 2];
+                                const gray = 0.2989 * r + 0.5870 * g + 0.1140 * b;
+                                blockPixels.push(gray);
+                            }
+                        }
+                    }
+
+                    const blockMean = blockPixels.reduce((sum, value) => sum + value, 0) / blockPixels.length;
+                    const highVals = blockPixels.filter(p => p > blockMean);
+                    const lowVals = blockPixels.filter(p => p <= blockMean);
+
+                    const highAvg = highVals.length > 0 ? highVals.reduce((sum, value) => sum + value, 0) / highVals.length : 0;
+                    const lowAvg = lowVals.length > 0 ? lowVals.reduce((sum, value) => sum + value, 0) / lowVals.length : 0;
+
+                    let idx = 0;
+                    for (let i = 0; i < blockSize; i++) {
+                        for (let j = 0; j < blockSize; j++) {
+                            const pixelX = x + j;
+                            const pixelY = y + i;
+
+                            if (pixelX < width && pixelY < height) {
+                                const pixelIndex = (pixelY * width + pixelX) * 4;
+                                const grayValue = blockPixels[idx] > blockMean ? highAvg : lowAvg;
+
+                                compressedData[pixelIndex] = grayValue;
+                                compressedData[pixelIndex + 1] = grayValue;
+                                compressedData[pixelIndex + 2] = grayValue;
+                                compressedData[pixelIndex + 3] = 255;
+
+                                idx++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function formatFileSize(size) {
+            const KB = 1024;
+            const MB = KB * 1024;
+            if (size >= MB) {
+                return (size / MB).toFixed(2) + ' MB';
+            } else {
+                return (size / KB).toFixed(2) + ' KB';
+            }
+        }
+
+        function downloadCompressedImage(canvas) {
+            const link = document.createElement('a');
+            link.download = 'compressed_image.jpg'; // 儲存為 JPG 格式
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.9); // 產生 JPG 圖像
+            link.href = dataUrl;
+            link.click();
+
+            // 計算資料的位元組大小
+            const byteString = atob(dataUrl.split(',')[1]);
+            const byteLength = byteString.length;
+            return byteLength; // 回傳圖片的實際大小
+        }
+    </script>
+
+</body>
+</html>
